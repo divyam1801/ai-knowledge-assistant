@@ -7,10 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
+COPY . .
 RUN pip install --no-cache-dir .
 
-COPY . .
+ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
