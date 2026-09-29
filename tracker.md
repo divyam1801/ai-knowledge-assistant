@@ -24,12 +24,15 @@
 - [x] Citation extraction and linking
 
 ## Phase 4 — Frontend
-- [ ] Next.js project setup with shadcn/ui
-- [ ] Auth pages (login/register)
-- [ ] Folder management UI
-- [ ] File upload with progress and status
-- [ ] Chat interface with streaming responses
-- [ ] Citation display
+- [x] Next.js project setup with Tailwind CSS and shadcn/ui theming
+- [x] API client, auth token management, TypeScript interfaces
+- [x] Sidebar layout (Notion-style, collapsible folders/chats, add folder, add notes)
+- [x] Auth pages (login/register) with error handling
+- [x] Folder list and folder detail pages
+- [x] File upload with drag-and-drop, status badges, delete
+- [x] Chat interface with SSE streaming responses
+- [x] Citation badges with expandable snippets
+- [x] Search page with folder filtering
 
 ## Phase 5 — Polish
 - [ ] Summarization (folder-level, document-level, date-scoped)
