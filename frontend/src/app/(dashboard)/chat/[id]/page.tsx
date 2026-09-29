@@ -101,11 +101,11 @@ export default function ChatPage() {
 
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.token) {
-                  accumulated += parsed.token;
+                if (parsed.type === "token" && parsed.content) {
+                  accumulated += parsed.content;
                   setStreamContent(accumulated);
                 }
-                if (parsed.citations) {
+                if (parsed.type === "done" && parsed.citations) {
                   citations = parsed.citations;
                   setStreamCitations(citations);
                 }
@@ -206,7 +206,9 @@ export default function ChatPage() {
               <span className="text-xs font-medium text-primary">AI</span>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm whitespace-pre-wrap">{streamContent}</div>
+              <div className="text-sm markdown-content">
+                <MarkdownContent content={streamContent} />
+              </div>
               {streamCitations.length > 0 && (
                 <CitationList
                   citations={streamCitations}
@@ -290,7 +292,9 @@ function MessageBubble({
         <span className="text-xs font-medium text-primary">AI</span>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+        <div className="text-sm markdown-content">
+          <MarkdownContent content={message.content} />
+        </div>
         {message.citations && message.citations.length > 0 && (
           <CitationList
             citations={message.citations}
@@ -301,6 +305,105 @@ function MessageBubble({
       </div>
     </div>
   );
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.startsWith("```")) {
+      const lang = line.slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++;
+      elements.push(
+        <pre key={elements.length} className="overflow-x-auto">
+          <code className={lang ? `language-${lang}` : ""}>
+            {codeLines.join("\n")}
+          </code>
+        </pre>
+      );
+      continue;
+    }
+
+    if (line.startsWith("### ")) {
+      elements.push(<h3 key={elements.length}>{formatInline(line.slice(4))}</h3>);
+    } else if (line.startsWith("## ")) {
+      elements.push(<h2 key={elements.length}>{formatInline(line.slice(3))}</h2>);
+    } else if (line.startsWith("# ")) {
+      elements.push(<h1 key={elements.length}>{formatInline(line.slice(2))}</h1>);
+    } else if (/^\d+\.\s/.test(line)) {
+      const items: string[] = [line.replace(/^\d+\.\s/, "")];
+      while (i + 1 < lines.length && /^\d+\.\s/.test(lines[i + 1])) {
+        i++;
+        items.push(lines[i].replace(/^\d+\.\s/, ""));
+      }
+      elements.push(
+        <ol key={elements.length}>
+          {items.map((item, j) => (
+            <li key={j}>{formatInline(item)}</li>
+          ))}
+        </ol>
+      );
+    } else if (line.startsWith("- ") || line.startsWith("* ")) {
+      const items: string[] = [line.slice(2)];
+      while (
+        i + 1 < lines.length &&
+        (lines[i + 1].startsWith("- ") || lines[i + 1].startsWith("* "))
+      ) {
+        i++;
+        items.push(lines[i].slice(2));
+      }
+      elements.push(
+        <ul key={elements.length}>
+          {items.map((item, j) => (
+            <li key={j}>{formatInline(item)}</li>
+          ))}
+        </ul>
+      );
+    } else if (line.trim() === "") {
+      // skip blank lines
+    } else {
+      elements.push(<p key={elements.length}>{formatInline(line)}</p>);
+    }
+    i++;
+  }
+
+  return <>{elements}</>;
+}
+
+function formatInline(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const m = match[0];
+    if (m.startsWith("`")) {
+      parts.push(<code key={parts.length}>{m.slice(1, -1)}</code>);
+    } else if (m.startsWith("**")) {
+      parts.push(<strong key={parts.length}>{m.slice(2, -2)}</strong>);
+    } else if (m.startsWith("*")) {
+      parts.push(<em key={parts.length}>{m.slice(1, -1)}</em>);
+    }
+    lastIndex = match.index + m.length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
 }
 
 function CitationList({

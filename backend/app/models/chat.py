@@ -46,7 +46,7 @@ class ChatMessage(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False
     )
-    role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
+    role: Mapped[MessageRole] = mapped_column(Enum(MessageRole, values_callable=lambda x: [e.value for e in x]), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     citations: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

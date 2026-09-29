@@ -36,6 +36,7 @@ services:
       LLM_PROVIDER: ollama
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       UPLOAD_DIR: /data/uploads
+      PYTHONPATH: /app
       DEBUG: "false"
     volumes:
       - ./backend:/app
@@ -52,9 +53,12 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/knowledge_assistant
       REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: ollama
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       UPLOAD_DIR: /data/uploads
+      PYTHONPATH: /app
     volumes:
+      - ./backend:/app
       - uploads:/data/uploads
     depends_on:
       db:

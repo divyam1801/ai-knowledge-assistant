@@ -34,10 +34,10 @@ class Document(Base):
     )
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1000), nullable=False)
-    file_type: Mapped[FileType] = mapped_column(Enum(FileType), nullable=False)
+    file_type: Mapped[FileType] = mapped_column(Enum(FileType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus), nullable=False, default=DocumentStatus.PROCESSING
+        Enum(DocumentStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=DocumentStatus.PROCESSING
     )
     chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(
