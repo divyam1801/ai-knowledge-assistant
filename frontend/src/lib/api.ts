@@ -137,6 +137,34 @@ export const api = {
       results: import("@/types").SearchResult[];
       total: number;
     }>("/api/search", { method: "POST", body: JSON.stringify(data) }),
+
+  summarize: {
+    folder: (folderId: string) =>
+      request<{ summary: string }>(`/api/summarize/folder/${folderId}`),
+    document: (documentId: string) =>
+      request<{ summary: string }>(`/api/summarize/document/${documentId}`),
+    date: (date: string, folderId?: string) => {
+      const params = folderId ? `?folder_id=${folderId}` : "";
+      return request<{ summary: string }>(`/api/summarize/date/${date}${params}`);
+    },
+  },
+
+  ephemeral: {
+    upload: (file: File, question: string) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("question", question);
+      return request<{ temp_id: string; answer: string; citations: import("@/types").Citation[] | null }>(
+        "/api/chat/upload",
+        { method: "POST", body: formData },
+      );
+    },
+    save: (tempId: string, folderId: string) =>
+      request<{ id: string; filename: string; status: string }>(
+        "/api/chat/upload/save",
+        { method: "POST", body: JSON.stringify({ temp_id: tempId, folder_id: folderId }) },
+      ),
+  },
 };
 
 export { ApiError };
