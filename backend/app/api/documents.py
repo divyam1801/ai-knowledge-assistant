@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import Document, DocumentStatus, FileType, Folder, User
 from app.schemas import DocumentResponse, DocumentStatusResponse
+from app.tasks.indexing import index_document
 
 router = APIRouter(tags=["documents"])
 
@@ -73,7 +74,7 @@ async def upload_document(
     await db.commit()
     await db.refresh(document)
 
-    # TODO: dispatch Celery task for async indexing
+    index_document.delay(str(document.id))
 
     return document
 
