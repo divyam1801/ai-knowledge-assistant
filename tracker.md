@@ -35,7 +35,8 @@
 - [x] Search page with folder filtering
 
 ## Phase 5 — Polish
-- [ ] Summarization (folder-level, document-level, date-scoped)
-- [ ] Ephemeral chat upload (UC4)
-- [ ] Error handling and retry logic
-- [ ] Loading states, empty states, error states in UI
+- [x] Summarization endpoints (folder-level, document-level, date-scoped)
+- [x] Ephemeral chat upload (UC4) — in-memory processing with save-to-folder
+- [x] Frontend Dockerfile and full Docker Compose (frontend + backend + worker)
+- [x] Error handling and loading/empty states in all UI pages
+- [ ] Run full stack end-to-end (needs Docker + Ollama)
