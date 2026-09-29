@@ -1,23 +1,29 @@
 import json
 import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.config import settings
 from app.database import get_db
-from app.models import ChatMessage, ChatSession, MessageRole, User
+from app.models import ChatMessage, ChatSession, Document, DocumentStatus, FileType, Folder, MessageRole, User
 from app.schemas import (
     ChatMessageCreate,
     ChatMessageResponse,
     ChatSessionCreate,
     ChatSessionDetailResponse,
     ChatSessionResponse,
+    EphemeralSaveRequest,
+    EphemeralUploadResponse,
 )
+from app.services.ephemeral import get_ephemeral_data, process_ephemeral_upload, remove_ephemeral
 from app.services.rag import rag_query, rag_query_stream
+from app.tasks.indexing import index_document
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -192,3 +198,62 @@ async def send_message_stream(
         yield f"data: {json.dumps({'type': 'done', 'message_id': str(assistant_message.id), 'citations': citations})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/upload", response_model=EphemeralUploadResponse)
+async def ephemeral_upload(
+    file: UploadFile,
+    question: str,
+    current_user: User = Depends(get_current_user),
+):
+    content = await file.read()
+    result = await process_ephemeral_upload(
+        file_content=content,
+        filename=file.filename or "unknown",
+        question=question,
+        user_id=current_user.id,
+    )
+    return result
+
+
+@router.post("/upload/save", status_code=status.HTTP_201_CREATED)
+async def save_ephemeral_upload(
+    data: EphemeralSaveRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ephemeral = get_ephemeral_data(data.temp_id, current_user.id)
+    if not ephemeral:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ephemeral upload not found or expired")
+
+    result = await db.execute(
+        select(Folder).where(Folder.id == data.folder_id, Folder.user_id == current_user.id)
+    )
+    folder = result.scalar_one_or_none()
+    if not folder:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+
+    doc_id = uuid.uuid4()
+    upload_dir = Path(settings.upload_dir) / str(current_user.id) / str(data.folder_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / f"{doc_id}_{ephemeral['filename']}"
+    file_path.write_bytes(ephemeral["file_content"])
+
+    document = Document(
+        id=doc_id,
+        folder_id=data.folder_id,
+        user_id=current_user.id,
+        filename=ephemeral["filename"],
+        file_path=str(file_path),
+        file_type=ephemeral["file_type"],
+        file_size_bytes=len(ephemeral["file_content"]),
+        status=DocumentStatus.PROCESSING,
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+
+    index_document.delay(str(document.id))
+    remove_ephemeral(data.temp_id)
+
+    return {"id": str(document.id), "filename": document.filename, "status": "processing"}
