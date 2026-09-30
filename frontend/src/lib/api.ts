@@ -28,10 +28,13 @@ async function request<T>(
     headers["Content-Type"] = "application/json";
   }
 
+  const start = performance.now();
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
   });
+  const elapsed = Math.round(performance.now() - start);
+  console.log(`[API] ${options.method || "GET"} ${path} — ${response.status} ${elapsed}ms`);
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -94,6 +97,19 @@ export const api = {
       ),
     delete: (id: string) =>
       request<void>(`/api/documents/${id}`, { method: "DELETE" }),
+    preview: (id: string) =>
+      request<{ id: string; filename: string; file_type: string; content: string; truncated: boolean }>(
+        `/api/documents/${id}/preview`,
+      ),
+    previewBlob: async (id: string): Promise<string> => {
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const response = await fetch(`${API_BASE}/api/documents/${id}/preview`, { headers });
+      if (!response.ok) throw new Error("Preview fetch failed");
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    },
   },
 
   chat: {
@@ -110,6 +126,11 @@ export const api = {
       >(`/api/chat/sessions/${id}`),
     deleteSession: (id: string) =>
       request<void>(`/api/chat/sessions/${id}`, { method: "DELETE" }),
+    updateSession: (id: string, data: { title?: string }) =>
+      request<import("@/types").ChatSession>(`/api/chat/sessions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     sendMessage: (sessionId: string, data: { content: string; folder_id?: string }) =>
       request<import("@/types").ChatMessage>(
         `/api/chat/sessions/${sessionId}/messages`,

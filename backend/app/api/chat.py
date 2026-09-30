@@ -93,6 +93,30 @@ async def delete_session(
     await db.commit()
 
 
+@router.patch("/sessions/{session_id}", response_model=ChatSessionResponse)
+async def update_session(
+    session_id: uuid.UUID,
+    data: ChatSessionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ChatSession).where(
+            ChatSession.id == session_id, ChatSession.user_id == current_user.id
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if data.title is not None:
+        session.title = data.title
+    if data.folder_id is not None:
+        session.folder_id = data.folder_id
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
 @router.post(
     "/sessions/{session_id}/messages",
     response_model=ChatMessageResponse,
@@ -138,6 +162,10 @@ async def send_message(
         citations=citations,
     )
     db.add(assistant_message)
+
+    if not session.title or session.title == "New chat":
+        session.title = data.content[:50].strip()
+
     await db.commit()
     await db.refresh(assistant_message)
     return assistant_message
@@ -192,6 +220,10 @@ async def send_message_stream(
             citations=citations,
         )
         db.add(assistant_message)
+
+        if not session.title or session.title == "New chat":
+            session.title = data.content[:50].strip()
+
         await db.commit()
         await db.refresh(assistant_message)
 

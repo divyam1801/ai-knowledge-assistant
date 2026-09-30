@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 
 from sqlalchemy import select, text
@@ -5,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Chunk, Document, Folder
 from app.services.llm.factory import get_llm_provider
+
+logger = logging.getLogger("app.search")
 
 
 async def vector_search(
@@ -14,8 +18,11 @@ async def vector_search(
     folder_id: uuid.UUID | None = None,
     limit: int = 10,
 ) -> list[dict]:
+    t0 = time.perf_counter()
     llm = get_llm_provider()
     query_embedding = await llm.embed(query)
+    t_embed = time.perf_counter()
+    logger.info("[SEARCH] query embedding — %.0fms", (t_embed - t0) * 1000)
 
     embedding_str = "[" + ",".join(str(v) for v in query_embedding) + "]"
 
@@ -45,6 +52,10 @@ async def vector_search(
     ).limit(limit)
 
     result = await db.execute(stmt)
+    t_query = time.perf_counter()
+    rows = result.all()
+    logger.info("[SEARCH] pgvector query — %.0fms, %d results", (t_query - t_embed) * 1000, len(rows))
+    logger.info("[SEARCH] total — %.0fms", (t_query - t0) * 1000)
 
     return [
         {
@@ -57,5 +68,5 @@ async def vector_search(
             "chunk_index": row.chunk_index,
             "metadata": row.metadata,
         }
-        for row in result.all()
+        for row in rows
     ]

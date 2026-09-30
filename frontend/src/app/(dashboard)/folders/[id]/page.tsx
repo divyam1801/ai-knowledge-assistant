@@ -11,6 +11,8 @@ import {
   CheckCircleIcon,
   LoaderIcon,
   AlertCircleIcon,
+  XIcon,
+  EyeIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn, formatBytes, formatRelativeTime } from "@/lib/utils";
@@ -52,6 +54,11 @@ export default function FolderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [previewContent, setPreviewContent] = useState<string>("");
+  const [previewTruncated, setPreviewTruncated] = useState(false);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const loadFolder = useCallback(async () => {
     const data = await api.folders.get(folderId);
@@ -86,6 +93,32 @@ export default function FolderDetailPage() {
     }
   }
 
+  async function handlePreview(doc: Document) {
+    if (doc.status !== "ready") return;
+    setPreviewDoc(doc);
+    setPreviewContent("");
+    setPreviewTruncated(false);
+    if (previewBlobUrl) {
+      URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl("");
+    }
+    setPreviewLoading(true);
+    try {
+      if (doc.file_type === "image" || doc.file_type === "pdf") {
+        const blobUrl = await api.documents.previewBlob(doc.id);
+        setPreviewBlobUrl(blobUrl);
+      } else {
+        const data = await api.documents.preview(doc.id);
+        setPreviewContent(data.content);
+        setPreviewTruncated(data.truncated);
+      }
+    } catch {
+      setPreviewContent("Failed to load preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -103,7 +136,8 @@ export default function FolderDetailPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="flex h-full overflow-hidden">
+    <div className={cn("p-6 overflow-y-auto transition-all", previewDoc ? "w-1/2" : "w-full max-w-4xl")}>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold">{folder.name}</h1>
@@ -172,7 +206,12 @@ export default function FolderDetailPage() {
               return (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/30 transition-colors group"
+                  onClick={() => handlePreview(doc)}
+                  className={cn(
+                    "flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/30 transition-colors group",
+                    doc.status === "ready" && "cursor-pointer",
+                    previewDoc?.id === doc.id && "ring-2 ring-ring bg-accent/30",
+                  )}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
@@ -181,15 +220,15 @@ export default function FolderDetailPage() {
                         {doc.filename}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {formatBytes(doc.file_size_bytes)}
-                        {doc.chunk_count !== null && ` · ${doc.chunk_count} chunks`}
-                        {" · "}
                         {formatRelativeTime(doc.uploaded_at)}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {doc.status === "ready" && (
+                      <EyeIcon className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    )}
                     <span
                       className={cn(
                         "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full",
@@ -205,7 +244,10 @@ export default function FolderDetailPage() {
                       {status.label}
                     </span>
                     <button
-                      onClick={() => handleDelete(doc.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(doc.id);
+                      }}
                       className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                     >
                       <TrashIcon className="h-4 w-4" />
@@ -222,6 +264,62 @@ export default function FolderDetailPage() {
           </div>
         )}
       </div>
+    </div>
+
+    {previewDoc && (
+      <div className="w-1/2 border-l border-border flex flex-col h-full">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-medium truncate">{previewDoc.filename}</h2>
+            <p className="text-xs text-muted-foreground">
+              {formatBytes(previewDoc.file_size_bytes)} &middot; {previewDoc.chunk_count ?? 0} chunks
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+              setPreviewBlobUrl("");
+              setPreviewDoc(null);
+            }}
+            className="p-1 rounded hover:bg-accent transition-colors ml-2"
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {previewLoading ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              <LoaderIcon className="h-5 w-5 animate-spin mr-2" />
+              Loading preview...
+            </div>
+          ) : previewDoc.file_type === "image" && previewBlobUrl ? (
+            <img
+              src={previewBlobUrl}
+              alt={previewDoc.filename}
+              className="max-w-full rounded-lg border border-border"
+            />
+          ) : previewDoc.file_type === "pdf" && previewBlobUrl ? (
+            <iframe
+              src={previewBlobUrl}
+              title={previewDoc.filename}
+              className="w-full h-full min-h-[500px] rounded-lg border border-border"
+            />
+          ) : (
+            <div>
+              <div className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90 font-mono bg-muted/30 rounded-lg p-4 border border-border">
+                {previewContent || "No content available."}
+              </div>
+              {previewTruncated && (
+                <p className="text-xs text-muted-foreground mt-2 text-center italic">
+                  Preview truncated — showing first ~50,000 characters
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )}
     </div>
   );
 }

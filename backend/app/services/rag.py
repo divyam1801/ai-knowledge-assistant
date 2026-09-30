@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 
@@ -5,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.llm.factory import get_llm_provider
 from app.services.search import vector_search
+
+logger = logging.getLogger("app.rag")
 
 
 def _build_context(chunks: list[dict]) -> str:
@@ -35,7 +39,11 @@ async def rag_query(
     folder_id: uuid.UUID | None = None,
     chat_history: list[dict] | None = None,
 ) -> tuple[str, list[dict]]:
+    t0 = time.perf_counter()
+
     chunks = await vector_search(db, question, user_id, folder_id, limit=10)
+    t_search = time.perf_counter()
+    logger.info("[RAG] vector search — %.0fms, %d chunks", (t_search - t0) * 1000, len(chunks))
 
     if not chunks:
         return "I couldn't find any relevant information in your knowledge base.", []
@@ -53,6 +61,10 @@ async def rag_query(
     async for token in llm.chat(messages, context, stream=False):
         full_response += token
 
+    t_llm = time.perf_counter()
+    logger.info("[RAG] LLM response — %.0fms, %d chars", (t_llm - t_search) * 1000, len(full_response))
+    logger.info("[RAG] total — %.0fms", (t_llm - t0) * 1000)
+
     return full_response, citations
 
 
@@ -63,7 +75,11 @@ async def rag_query_stream(
     folder_id: uuid.UUID | None = None,
     chat_history: list[dict] | None = None,
 ) -> AsyncIterator[tuple[str, list[dict] | None]]:
+    t0 = time.perf_counter()
+
     chunks = await vector_search(db, question, user_id, folder_id, limit=10)
+    t_search = time.perf_counter()
+    logger.info("[RAG-stream] vector search — %.0fms, %d chunks", (t_search - t0) * 1000, len(chunks))
 
     if not chunks:
         yield "I couldn't find any relevant information in your knowledge base.", []
@@ -78,7 +94,17 @@ async def rag_query_stream(
     messages.append({"role": "user", "content": question})
 
     llm = get_llm_provider()
+    token_count = 0
+    t_first_token = None
     async for token in llm.chat(messages, context, stream=True):
+        if t_first_token is None:
+            t_first_token = time.perf_counter()
+            logger.info("[RAG-stream] time to first token — %.0fms", (t_first_token - t_search) * 1000)
+        token_count += 1
         yield token, None
+
+    t_done = time.perf_counter()
+    logger.info("[RAG-stream] LLM stream done — %.0fms, %d tokens", (t_done - t_search) * 1000, token_count)
+    logger.info("[RAG-stream] total — %.0fms", (t_done - t0) * 1000)
 
     yield "", citations

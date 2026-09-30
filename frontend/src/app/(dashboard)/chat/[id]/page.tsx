@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   SendIcon,
   LoaderIcon,
@@ -14,9 +14,12 @@ import type { ChatMessage, ChatSession, Citation, Folder } from "@/types";
 
 export default function ChatPage() {
   const params = useParams();
-  const sessionId = params.id as string;
+  const router = useRouter();
+  const paramId = params.id as string;
+  const isNew = paramId === "new";
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const sessionIdRef = useRef<string | null>(isNew ? null : paramId);
 
   const [session, setSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -34,8 +37,13 @@ export default function ChatPage() {
 
   useEffect(() => {
     async function load() {
+      if (isNew) {
+        const folderData = await api.folders.list();
+        setFolders(folderData);
+        return;
+      }
       const [sessionData, folderData] = await Promise.all([
-        api.chat.getSession(sessionId),
+        api.chat.getSession(paramId),
         api.folders.list(),
       ]);
       setSession(sessionData);
@@ -46,7 +54,7 @@ export default function ChatPage() {
       }
     }
     load();
-  }, [sessionId]);
+  }, [paramId, isNew]);
 
   useEffect(() => {
     scrollToBottom();
@@ -71,10 +79,25 @@ export default function ChatPage() {
     setStreamCitations([]);
 
     try {
-      const response = await api.chat.streamMessage(sessionId, {
+      let activeSessionId = sessionIdRef.current;
+
+      if (!activeSessionId) {
+        const newSession = await api.chat.createSession({
+          title: content.slice(0, 50).trim(),
+          folder_id: selectedFolder || undefined,
+        });
+        activeSessionId = newSession.id;
+        sessionIdRef.current = activeSessionId;
+        setSession(newSession);
+        router.replace(`/chat/${activeSessionId}`);
+      }
+
+      const streamStart = performance.now();
+      const response = await api.chat.streamMessage(activeSessionId, {
         content,
         folder_id: selectedFolder || undefined,
       });
+      console.log(`[CHAT] stream request sent — ${Math.round(performance.now() - streamStart)}ms`);
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -85,6 +108,7 @@ export default function ChatPage() {
       const decoder = new TextDecoder();
       let accumulated = "";
       let citations: Citation[] = [];
+      let firstTokenLogged = false;
 
       if (reader) {
         while (true) {
@@ -102,10 +126,15 @@ export default function ChatPage() {
               try {
                 const parsed = JSON.parse(data);
                 if (parsed.type === "token" && parsed.content) {
+                  if (!firstTokenLogged) {
+                    console.log(`[CHAT] first token — ${Math.round(performance.now() - streamStart)}ms`);
+                    firstTokenLogged = true;
+                  }
                   accumulated += parsed.content;
                   setStreamContent(accumulated);
                 }
                 if (parsed.type === "done" && parsed.citations) {
+                  console.log(`[CHAT] stream complete — ${Math.round(performance.now() - streamStart)}ms`);
                   citations = parsed.citations;
                   setStreamCitations(citations);
                 }

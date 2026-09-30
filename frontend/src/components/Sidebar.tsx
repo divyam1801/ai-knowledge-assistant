@@ -11,6 +11,9 @@ import {
   BookOpenIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  TrashIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { removeToken } from "@/lib/auth";
@@ -26,11 +29,23 @@ export default function Sidebar() {
   const [chatsOpen, setChatsOpen] = useState(true);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     loadFolders();
     loadChats();
-  }, []);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    function handleClick() {
+      setMenuOpenId(null);
+    }
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [menuOpenId]);
 
   async function loadFolders() {
     try {
@@ -58,10 +73,25 @@ export default function Sidebar() {
     loadFolders();
   }
 
-  async function handleNewChat() {
-    const session = await api.chat.createSession({ title: "New chat" });
+  function handleNewChat() {
+    router.push(`/chat/new`);
+  }
+
+  async function handleDeleteChat(sessionId: string) {
+    await api.chat.deleteSession(sessionId);
+    setMenuOpenId(null);
     loadChats();
-    router.push(`/chat/${session.id}`);
+    if (pathname === `/chat/${sessionId}`) {
+      router.push("/folders");
+    }
+  }
+
+  async function handleRenameChat(sessionId: string) {
+    if (!renameValue.trim()) return;
+    await api.chat.updateSession(sessionId, { title: renameValue.trim() });
+    setRenamingId(null);
+    setRenameValue("");
+    loadChats();
   }
 
   function handleLogout() {
@@ -171,21 +201,81 @@ export default function Sidebar() {
               </button>
 
               {chatSessions.slice(0, 10).map((session) => (
-                <button
-                  key={session.id}
-                  onClick={() => router.push(`/chat/${session.id}`)}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors",
-                    pathname === `/chat/${session.id}`
-                      ? "bg-accent text-accent-foreground font-medium"
-                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                <div key={session.id} className="relative group">
+                  {renamingId === session.id ? (
+                    <div className="px-2 py-1">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameChat(session.id);
+                          if (e.key === "Escape") {
+                            setRenamingId(null);
+                            setRenameValue("");
+                          }
+                        }}
+                        onBlur={() => {
+                          if (renameValue.trim()) {
+                            handleRenameChat(session.id);
+                          } else {
+                            setRenamingId(null);
+                          }
+                        }}
+                        className="w-full px-2 py-1 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => router.push(`/chat/${session.id}`)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors",
+                        pathname === `/chat/${session.id}`
+                          ? "bg-accent text-accent-foreground font-medium"
+                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                      )}
+                    >
+                      <MessageCircleIcon className="h-4 w-4 shrink-0" />
+                      <span className="truncate flex-1 text-left">
+                        {session.title || "Untitled chat"}
+                      </span>
+                      <span
+                        role="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpenId(menuOpenId === session.id ? null : session.id);
+                        }}
+                        className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-accent transition-all"
+                      >
+                        <MoreHorizontalIcon className="h-3.5 w-3.5" />
+                      </span>
+                    </button>
                   )}
-                >
-                  <MessageCircleIcon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">
-                    {session.title || "Untitled chat"}
-                  </span>
-                </button>
+
+                  {menuOpenId === session.id && (
+                    <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-md border border-border bg-background shadow-lg py-1">
+                      <button
+                        onClick={() => {
+                          setRenamingId(session.id);
+                          setRenameValue(session.title || "");
+                          setMenuOpenId(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground hover:bg-accent transition-colors"
+                      >
+                        <PencilIcon className="h-3.5 w-3.5" />
+                        Rename
+                      </button>
+                      <button
+                        onClick={() => handleDeleteChat(session.id)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}

@@ -2,13 +2,14 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.config import settings
 from app.database import get_db
-from app.models import Document, DocumentStatus, FileType, Folder, User
+from app.models import Chunk, Document, DocumentStatus, FileType, Folder, User
 from app.schemas import DocumentResponse, DocumentStatusResponse
 from app.tasks.indexing import index_document
 
@@ -113,6 +114,76 @@ async def get_document_status(
     return DocumentStatusResponse(
         id=document.id, status=document.status.value, chunk_count=document.chunk_count
     )
+
+
+@router.get("/api/documents/{document_id}/preview")
+async def preview_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id, Document.user_id == current_user.id
+        )
+    )
+    document = result.scalar_one_or_none()
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    if document.file_type in (FileType.PDF, FileType.IMAGE):
+        file_path = Path(document.file_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk")
+        media_types = {
+            FileType.PDF: "application/pdf",
+            FileType.IMAGE: "image/png",
+        }
+        return FileResponse(
+            file_path,
+            media_type=media_types.get(document.file_type, "application/octet-stream"),
+            filename=document.filename,
+        )
+
+    MAX_PREVIEW_CHARS = 50_000
+    truncated = False
+
+    chunks_result = await db.execute(
+        select(Chunk.content, Chunk.chunk_index)
+        .where(Chunk.document_id == document_id)
+        .order_by(Chunk.chunk_index)
+        .limit(50)
+    )
+    chunks = chunks_result.all()
+
+    if chunks:
+        parts = []
+        total = 0
+        for row in chunks:
+            if total + len(row.content) > MAX_PREVIEW_CHARS:
+                parts.append(row.content[: MAX_PREVIEW_CHARS - total])
+                truncated = True
+                break
+            parts.append(row.content)
+            total += len(row.content)
+        text = "\n\n".join(parts)
+    else:
+        file_path = Path(document.file_path)
+        if file_path.exists():
+            with open(file_path, encoding="utf-8", errors="replace") as f:
+                text = f.read(MAX_PREVIEW_CHARS)
+                if len(text) == MAX_PREVIEW_CHARS:
+                    truncated = True
+        else:
+            text = ""
+
+    return {
+        "id": str(document.id),
+        "filename": document.filename,
+        "file_type": document.file_type.value,
+        "content": text,
+        "truncated": truncated,
+    }
 
 
 @router.delete("/api/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
