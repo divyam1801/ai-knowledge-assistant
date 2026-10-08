@@ -204,14 +204,22 @@ async def send_message_stream(
         full_response = ""
         citations = None
 
-        async for token, cit in rag_query_stream(
-            db, data.content, current_user.id, folder_id, chat_history
-        ):
-            if cit is not None:
-                citations = cit
+        try:
+            async for token, cit in rag_query_stream(
+                db, data.content, current_user.id, folder_id, chat_history
+            ):
+                if cit is not None:
+                    citations = cit
+                else:
+                    full_response += token
+                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "rate" in error_msg.lower():
+                yield f"data: {json.dumps({'type': 'error', 'error_type': 'rate_limit', 'content': 'Rate limit exceeded. Please wait a moment and try again.'})}\n\n"
             else:
-                full_response += token
-                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'error_type': 'server_error', 'content': f'An error occurred: {error_msg}'})}\n\n"
+            return
 
         assistant_message = ChatMessage(
             session_id=session_id,

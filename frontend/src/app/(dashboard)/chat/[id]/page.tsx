@@ -138,8 +138,17 @@ export default function ChatPage() {
                   citations = parsed.citations;
                   setStreamCitations(citations);
                 }
-              } catch {
-                // skip malformed SSE lines
+                if (parsed.type === "error") {
+                  console.error(`[CHAT] stream error — ${parsed.error_type}: ${parsed.content}`);
+                  throw new Error(
+                    parsed.error_type === "rate_limit"
+                      ? "Rate limit exceeded. Please wait a moment and try again."
+                      : parsed.content || "Something went wrong"
+                  );
+                }
+              } catch (parseErr) {
+                if (parseErr instanceof Error && parseErr.message.includes("Rate limit")) throw parseErr;
+                if (parseErr instanceof Error && parseErr.message.includes("An error")) throw parseErr;
               }
             }
           }
@@ -156,11 +165,13 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
+      const isRateLimit = err instanceof Error && err.message.includes("Rate limit");
       const errorMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content:
-          err instanceof Error
+        content: isRateLimit
+          ? "⚠️ **Rate limit exceeded.** Your API key has reached its request limit. Please wait a moment and try again."
+          : err instanceof Error
             ? `Error: ${err.message}`
             : "Something went wrong",
         citations: null,
