@@ -6,7 +6,8 @@ import numpy as np
 
 from app.models import FileType
 from app.services.ingestion import extract_text, process_document_text
-from app.services.llm.factory import get_llm_provider
+from app.services.llm.factory import get_chat_provider, get_embed_provider
+from app.services.llm.prompts import CHAT_SYSTEM_PROMPT
 
 _ephemeral_store: dict[str, dict] = {}
 
@@ -55,10 +56,10 @@ async def process_ephemeral_upload(
             "citations": None,
         }
 
-    llm = get_llm_provider()
+    embed_llm = get_embed_provider()
     chunk_texts = [c["content"] for c in chunks]
-    embeddings = await llm.embed_batch(chunk_texts)
-    query_embedding = await llm.embed(question)
+    embeddings = await embed_llm.embed_batch(chunk_texts)
+    query_embedding = await embed_llm.embed(question)
 
     scored = []
     for i, emb in enumerate(embeddings):
@@ -83,8 +84,10 @@ async def process_ephemeral_upload(
     context = "\n\n".join(context_parts)
     messages = [{"role": "user", "content": question}]
 
+    chat_llm = get_chat_provider()
+    system_prompt = CHAT_SYSTEM_PROMPT.format(context=context)
     full_response = ""
-    async for token in llm.chat(messages, context, stream=False):
+    async for token in chat_llm.chat(messages, system_prompt, stream=False):
         full_response += token
 
     temp_id = str(uuid.uuid4())

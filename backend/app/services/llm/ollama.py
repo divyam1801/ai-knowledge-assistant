@@ -47,20 +47,9 @@ class OllamaProvider(LLMProvider):
     async def chat(
         self,
         messages: list[dict],
-        context: str,
+        system_prompt: str,
         stream: bool = True,
     ) -> AsyncIterator[str]:
-        system_prompt = (
-            "You are a knowledgeable study assistant. Answer the user's question "
-            "using ONLY the provided context. Structure your response clearly:\n"
-            "- Use headings, bullet points, and numbered lists where appropriate\n"
-            "- Explain concepts thoroughly in your own words, don't just copy text\n"
-            "- Include relevant examples or code snippets from the context\n"
-            "- Mention which document the information comes from naturally in your answer\n"
-            "- If the context doesn't fully answer the question, say what's missing\n\n"
-            f"CONTEXT:\n{context}"
-        )
-
         ollama_messages = [{"role": "system", "content": system_prompt}]
         ollama_messages.extend(messages)
 
@@ -86,7 +75,10 @@ class OllamaProvider(LLMProvider):
                         data = json.loads(line)
                         if content := data.get("message", {}).get("content"):
                             if first:
-                                logger.info("[CHAT] first token — %.0fms", (time.perf_counter() - t0) * 1000)
+                                logger.info(
+                                    "[CHAT] first token — %.0fms",
+                                    (time.perf_counter() - t0) * 1000,
+                                )
                                 first = False
                             yield content
                         if data.get("done"):
@@ -102,27 +94,7 @@ class OllamaProvider(LLMProvider):
                     },
                 )
                 response.raise_for_status()
-                logger.info("[CHAT] non-stream complete — %.0fms", (time.perf_counter() - t0) * 1000)
+                logger.info(
+                    "[CHAT] non-stream complete — %.0fms", (time.perf_counter() - t0) * 1000
+                )
                 yield response.json()["message"]["content"]
-
-    async def summarize(self, text: str) -> str:
-        messages = [
-            {
-                "role": "user",
-                "content": (
-                    "Summarize the following text concisely, preserving key facts and concepts:\n\n"
-                    f"{text}"
-                ),
-            }
-        ]
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                f"{self.base_url}/api/chat",
-                json={
-                    "model": self.chat_model,
-                    "messages": messages,
-                    "stream": False,
-                },
-            )
-            response.raise_for_status()
-            return response.json()["message"]["content"]

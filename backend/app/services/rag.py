@@ -5,7 +5,8 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.llm.factory import get_llm_provider
+from app.services.llm.factory import get_chat_provider
+from app.services.llm.prompts import CHAT_SYSTEM_PROMPT
 from app.services.search import vector_search
 
 logger = logging.getLogger("app.rag")
@@ -56,9 +57,10 @@ async def rag_query(
         messages.extend(chat_history)
     messages.append({"role": "user", "content": question})
 
-    llm = get_llm_provider()
+    llm = get_chat_provider()
+    system_prompt = CHAT_SYSTEM_PROMPT.format(context=context)
     full_response = ""
-    async for token in llm.chat(messages, context, stream=False):
+    async for token in llm.chat(messages, system_prompt, stream=False):
         full_response += token
 
     t_llm = time.perf_counter()
@@ -93,10 +95,11 @@ async def rag_query_stream(
         messages.extend(chat_history)
     messages.append({"role": "user", "content": question})
 
-    llm = get_llm_provider()
+    llm = get_chat_provider()
+    system_prompt = CHAT_SYSTEM_PROMPT.format(context=context)
     token_count = 0
     t_first_token = None
-    async for token in llm.chat(messages, context, stream=True):
+    async for token in llm.chat(messages, system_prompt, stream=True):
         if t_first_token is None:
             t_first_token = time.perf_counter()
             logger.info("[RAG-stream] time to first token — %.0fms", (t_first_token - t_search) * 1000)

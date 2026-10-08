@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Chunk, Document, Folder
-from app.services.llm.factory import get_llm_provider
+from app.services.llm.factory import get_chat_provider
+from app.services.llm.prompts import SUMMARIZE_PROMPT
 
 
 async def summarize_folder(db: AsyncSession, folder_id: uuid.UUID, user_id: uuid.UUID) -> str:
@@ -21,8 +22,7 @@ async def summarize_folder(db: AsyncSession, folder_id: uuid.UUID, user_id: uuid
         return "No content found in this folder."
 
     combined = "\n\n".join(contents)
-    llm = get_llm_provider()
-    return await llm.summarize(combined)
+    return await _summarize(combined)
 
 
 async def summarize_document(db: AsyncSession, document_id: uuid.UUID, user_id: uuid.UUID) -> str:
@@ -36,8 +36,7 @@ async def summarize_document(db: AsyncSession, document_id: uuid.UUID, user_id: 
         return "No content found in this document."
 
     combined = "\n\n".join(contents)
-    llm = get_llm_provider()
-    return await llm.summarize(combined)
+    return await _summarize(combined)
 
 
 async def summarize_by_date(
@@ -63,5 +62,13 @@ async def summarize_by_date(
         return f"No content found for {target_date.isoformat()}."
 
     combined = "\n\n".join(f"[{row.filename}]\n{row.content}" for row in rows)
-    llm = get_llm_provider()
-    return await llm.summarize(combined)
+    return await _summarize(combined)
+
+
+async def _summarize(text: str) -> str:
+    llm = get_chat_provider()
+    prompt = SUMMARIZE_PROMPT.format(text=text)
+    result = ""
+    async for token in llm.chat([{"role": "user", "content": prompt}], system_prompt="", stream=False):
+        result += token
+    return result

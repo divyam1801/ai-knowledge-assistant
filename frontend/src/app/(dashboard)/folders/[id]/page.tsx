@@ -71,6 +71,13 @@ export default function FolderDetailPage() {
     loadFolder();
   }, [loadFolder]);
 
+  useEffect(() => {
+    const hasProcessing = documents.some((d) => d.status === "processing");
+    if (!hasProcessing) return;
+    const interval = setInterval(loadFolder, 3000);
+    return () => clearInterval(interval);
+  }, [documents, loadFolder]);
+
   async function handleUpload(files: FileList | File[]) {
     setUploading(true);
     for (const file of Array.from(files)) {

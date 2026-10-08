@@ -6,7 +6,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Chunk, Document, Folder
-from app.services.llm.factory import get_llm_provider
+from app.services.llm.factory import get_embed_provider
 
 logger = logging.getLogger("app.search")
 
@@ -19,7 +19,7 @@ async def vector_search(
     limit: int = 10,
 ) -> list[dict]:
     t0 = time.perf_counter()
-    llm = get_llm_provider()
+    llm = get_embed_provider()
     query_embedding = await llm.embed(query)
     t_embed = time.perf_counter()
     logger.info("[SEARCH] query embedding — %.0fms", (t_embed - t0) * 1000)

@@ -9,7 +9,7 @@ from app.celery_app import celery_app
 from app.config import settings
 from app.models import Chunk, Document, DocumentStatus
 from app.services.ingestion import process_document_text
-from app.services.llm.factory import get_llm_provider
+from app.services.llm.factory import get_embed_provider
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +46,8 @@ async def _index_document(task, document_id: uuid.UUID) -> dict:
                 await _update_status(db, document_id, DocumentStatus.READY, chunk_count=0)
                 return {"status": "ready", "chunks": 0}
 
-            llm = get_llm_provider()
-            logger.info("[INDEX] LLM provider: %s — generating embeddings for %d chunks...", type(llm).__name__, len(chunks_data))
+            llm = get_embed_provider()
+            logger.info("[INDEX] Embed provider: %s — generating embeddings for %d chunks...", type(llm).__name__, len(chunks_data))
             texts = [c["content"] for c in chunks_data]
             embeddings = await llm.embed_batch(texts)
             logger.info("[INDEX] Embeddings generated: %d vectors (dim=%d)", len(embeddings), len(embeddings[0]) if embeddings else 0)
