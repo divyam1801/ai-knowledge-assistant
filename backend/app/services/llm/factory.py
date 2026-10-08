@@ -7,14 +7,6 @@ _chat_provider: ChatProvider | None = None
 
 def _create_provider(name: str) -> EmbedProvider | ChatProvider:
     match name:
-        case "ollama":
-            from app.services.llm.ollama import OllamaProvider
-
-            return OllamaProvider(
-                base_url=settings.ollama_base_url,
-                embed_model=settings.ollama_embed_model,
-                chat_model=settings.ollama_chat_model,
-            )
         case "gemini":
             from app.services.llm.gemini import GeminiProvider
 
