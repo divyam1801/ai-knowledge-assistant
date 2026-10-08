@@ -29,5 +29,8 @@ class Settings(BaseSettings):
     gemini_embed_model: str = "gemini-embedding-001"
     gemini_chat_model: str = "gemini-3.5-flash"
 
+    gateway_base_url: str = ""
+    gateway_api_key: str = ""
+
 
 settings = Settings()

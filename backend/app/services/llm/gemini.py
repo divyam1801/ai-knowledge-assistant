@@ -12,11 +12,20 @@ EMBED_BATCH_SIZE = 100
 
 
 class GeminiProvider(LLMProvider):
-    def __init__(self, api_key: str, embed_model: str, chat_model: str):
-        self.client = genai.Client(api_key=api_key)
+    def __init__(self, api_key: str, embed_model: str, chat_model: str,
+                 gateway_base_url: str = "", gateway_api_key: str = ""):
+        if gateway_base_url and gateway_api_key:
+            self.client = genai.Client(
+                api_key=gateway_api_key,
+                http_options=types.HttpOptions(base_url=gateway_base_url, api_version="v1"),
+            )
+            logger.info("[INIT] Gemini provider via gateway %s (embed=%s, chat=%s)",
+                        gateway_base_url, embed_model, chat_model)
+        else:
+            self.client = genai.Client(api_key=api_key)
+            logger.info("[INIT] Gemini provider direct (embed=%s, chat=%s)", embed_model, chat_model)
         self.embed_model = embed_model
         self.chat_model = chat_model
-        logger.info("[INIT] Gemini provider initialized (embed=%s, chat=%s)", embed_model, chat_model)
 
     async def embed(self, text: str) -> list[float]:
         logger.info("[EMBED] Calling Gemini Embedding API (model=%s)", self.embed_model)

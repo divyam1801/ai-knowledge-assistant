@@ -37,6 +37,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_EMBED_MODEL: ${GEMINI_EMBED_MODEL:-gemini-embedding-001}
       GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-gemini-3.5-flash}
+      GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:-}
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:-}
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       UPLOAD_DIR: /data/uploads
       PYTHONPATH: /app
@@ -60,6 +62,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_EMBED_MODEL: ${GEMINI_EMBED_MODEL:-gemini-embedding-001}
       GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-gemini-3.5-flash}
+      GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:-}
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:-}
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       UPLOAD_DIR: /data/uploads
       PYTHONPATH: /app
