@@ -84,7 +84,8 @@ async def rag_query_stream(
     logger.info("[RAG-stream] vector search — %.0fms, %d chunks", (t_search - t0) * 1000, len(chunks))
 
     if not chunks:
-        yield "I couldn't find any relevant information in your knowledge base.", []
+        yield "I couldn't find any relevant information in your knowledge base.", None
+        yield "", []
         return
 
     context = _build_context(chunks)

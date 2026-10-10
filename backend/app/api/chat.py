@@ -214,11 +214,28 @@ async def send_message_stream(
                     full_response += token
                     yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
         except Exception as e:
+            import logging
+            logger = logging.getLogger("app.chat")
             error_msg = str(e)
-            if "429" in error_msg or "rate" in error_msg.lower():
-                yield f"data: {json.dumps({'type': 'error', 'error_type': 'rate_limit', 'content': 'Rate limit exceeded. Please wait a moment and try again.'})}\n\n"
+            logger.error("Stream error for session %s: %s", session_id, error_msg)
+
+            if "rate_limit_error" in error_msg or ("429" in error_msg and "Rate limit exceeded" in error_msg):
+                error_type = "gateway_rate_limit"
+                content = "Sorry for the inconvenience, you have hit the Gateway API rate limit. Please try again in a moment."
+            elif "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                error_type = "google_rate_limit"
+                content = "Sorry for the inconvenience, you have hit the Google Gemini API rate limit. Please try again later."
+            elif "503" in error_msg or "UNAVAILABLE" in error_msg:
+                error_type = "service_unavailable"
+                if "high demand" in error_msg:
+                    content = "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."
+                else:
+                    content = "The AI service is temporarily unavailable. Please try again later."
             else:
-                yield f"data: {json.dumps({'type': 'error', 'error_type': 'server_error', 'content': f'An error occurred: {error_msg}'})}\n\n"
+                error_type = "server_error"
+                content = "Something went wrong. We are investigating the issue."
+
+            yield f"data: {json.dumps({'type': 'error', 'error_type': error_type, 'content': content})}\n\n"
             return
 
         assistant_message = ChatMessage(
