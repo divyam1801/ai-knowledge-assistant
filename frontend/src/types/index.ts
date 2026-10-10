@@ -41,6 +41,8 @@ export interface ChatMessage {
   content: string;
   citations: Citation[] | null;
   created_at: string;
+  is_error?: boolean;
+  error_type?: string;
 }
 
 export interface Citation {

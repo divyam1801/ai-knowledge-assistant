@@ -74,7 +74,8 @@ export default function Sidebar() {
   }
 
   function handleNewChat() {
-    router.push(`/chat/new`);
+    router.push(`/chat/new?t=${Date.now()}`);
+    loadChats();
   }
 
   async function handleDeleteChat(sessionId: string) {

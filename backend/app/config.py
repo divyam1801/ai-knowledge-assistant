@@ -21,13 +21,12 @@ class Settings(BaseSettings):
     embed_provider: str = ""
     chat_provider: str = ""
 
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_embed_model: str = "nomic-embed-text"
-    ollama_chat_model: str = "llama3.1:8b"
-
     gemini_api_key: str = ""
     gemini_embed_model: str = "gemini-embedding-001"
     gemini_chat_model: str = "gemini-3.5-flash"
+
+    gateway_base_url: str = ""
+    gateway_api_key: str = ""
 
 
 settings = Settings()

@@ -7,23 +7,17 @@ _chat_provider: ChatProvider | None = None
 
 def _create_provider(name: str) -> EmbedProvider | ChatProvider:
     match name:
-        case "ollama":
-            from app.services.llm.ollama import OllamaProvider
-
-            return OllamaProvider(
-                base_url=settings.ollama_base_url,
-                embed_model=settings.ollama_embed_model,
-                chat_model=settings.ollama_chat_model,
-            )
         case "gemini":
             from app.services.llm.gemini import GeminiProvider
 
-            if not settings.gemini_api_key:
-                raise ValueError("GEMINI_API_KEY is required when using the gemini provider")
+            if not settings.gateway_api_key and not settings.gemini_api_key:
+                raise ValueError("GATEWAY_API_KEY or GEMINI_API_KEY is required when using the gemini provider")
             return GeminiProvider(
                 api_key=settings.gemini_api_key,
                 embed_model=settings.gemini_embed_model,
                 chat_model=settings.gemini_chat_model,
+                gateway_base_url=settings.gateway_base_url,
+                gateway_api_key=settings.gateway_api_key,
             )
         case _:
             raise ValueError(f"Unknown LLM provider: {name}")

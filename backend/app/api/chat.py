@@ -204,14 +204,39 @@ async def send_message_stream(
         full_response = ""
         citations = None
 
-        async for token, cit in rag_query_stream(
-            db, data.content, current_user.id, folder_id, chat_history
-        ):
-            if cit is not None:
-                citations = cit
+        try:
+            async for token, cit in rag_query_stream(
+                db, data.content, current_user.id, folder_id, chat_history
+            ):
+                if cit is not None:
+                    citations = cit
+                else:
+                    full_response += token
+                    yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+        except Exception as e:
+            import logging
+            logger = logging.getLogger("app.chat")
+            error_msg = str(e)
+            logger.error("Stream error for session %s: %s", session_id, error_msg)
+
+            if "rate_limit_error" in error_msg or ("429" in error_msg and "Rate limit exceeded" in error_msg):
+                error_type = "gateway_rate_limit"
+                content = "Sorry for the inconvenience, you have hit the Gateway API rate limit. Please try again in a moment."
+            elif "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                error_type = "google_rate_limit"
+                content = "Sorry for the inconvenience, you have hit the Google Gemini API rate limit. Please try again later."
+            elif "503" in error_msg or "UNAVAILABLE" in error_msg:
+                error_type = "service_unavailable"
+                if "high demand" in error_msg:
+                    content = "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."
+                else:
+                    content = "The AI service is temporarily unavailable. Please try again later."
             else:
-                full_response += token
-                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                error_type = "server_error"
+                content = "Something went wrong. We are investigating the issue."
+
+            yield f"data: {json.dumps({'type': 'error', 'error_type': error_type, 'content': content})}\n\n"
+            return
 
         assistant_message = ChatMessage(
             session_id=session_id,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   SendIcon,
   LoaderIcon,
@@ -14,9 +14,10 @@ import type { ChatMessage, ChatSession, Citation, Folder } from "@/types";
 
 export default function ChatPage() {
   const params = useParams();
-  const router = useRouter();
+  const searchParams = useSearchParams();
   const paramId = params.id as string;
   const isNew = paramId === "new";
+  const resetKey = searchParams.get("t") || "";
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const sessionIdRef = useRef<string | null>(isNew ? null : paramId);
@@ -35,6 +36,22 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  const streamingRef = useRef(false);
+
+  useEffect(() => {
+    if (isNew) {
+      setSession(null);
+      setMessages([]);
+      setInput("");
+      setStreaming(false);
+      streamingRef.current = false;
+      setStreamContent("");
+      setStreamCitations([]);
+      sessionIdRef.current = null;
+      setExpandedCitation(null);
+    }
+  }, [resetKey]);
+
   useEffect(() => {
     async function load() {
       if (isNew) {
@@ -42,6 +59,7 @@ export default function ChatPage() {
         setFolders(folderData);
         return;
       }
+      if (streamingRef.current) return;
       const [sessionData, folderData] = await Promise.all([
         api.chat.getSession(paramId),
         api.folders.list(),
@@ -75,6 +93,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setStreaming(true);
+    streamingRef.current = true;
     setStreamContent("");
     setStreamCitations([]);
 
@@ -89,7 +108,6 @@ export default function ChatPage() {
         activeSessionId = newSession.id;
         sessionIdRef.current = activeSessionId;
         setSession(newSession);
-        router.replace(`/chat/${activeSessionId}`);
       }
 
       const streamStart = performance.now();
@@ -100,8 +118,23 @@ export default function ChatPage() {
       console.log(`[CHAT] stream request sent — ${Math.round(performance.now() - streamStart)}ms`);
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || "Stream failed");
+        const errBody = await response.json().catch(() => ({}));
+        const errMsg = errBody?.error?.message || errBody?.detail || "Stream failed";
+        let errorType = "server_error";
+        if (response.status === 429 || errBody?.error?.type === "rate_limit_error") {
+          errorType = "gateway_rate_limit";
+        } else if (response.status === 503) {
+          errorType = "service_unavailable";
+        }
+        const error = new Error(
+          errorType === "gateway_rate_limit"
+            ? "Sorry for the inconvenience, you have hit the Gateway API rate limit. Please try again in a moment."
+            : errorType === "service_unavailable"
+              ? "The AI service is temporarily unavailable. Please try again later."
+              : "Something went wrong. We are investigating the issue."
+        );
+        (error as any).errorType = errorType;
+        throw error;
       }
 
       const reader = response.body?.getReader();
@@ -138,8 +171,14 @@ export default function ChatPage() {
                   citations = parsed.citations;
                   setStreamCitations(citations);
                 }
-              } catch {
-                // skip malformed SSE lines
+                if (parsed.type === "error") {
+                  console.error(`[CHAT] stream error — ${parsed.error_type}: ${parsed.content}`);
+                  const err = new Error(parsed.content || "Something went wrong");
+                  (err as any).errorType = parsed.error_type;
+                  throw err;
+                }
+              } catch (parseErr) {
+                if (parseErr instanceof Error && (parseErr as any).errorType) throw parseErr;
               }
             }
           }
@@ -156,19 +195,21 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
+      const errorType = err instanceof Error ? (err as any).errorType : undefined;
+      const errorContent = err instanceof Error ? err.message : "Something went wrong. We are investigating the issue.";
       const errorMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content:
-          err instanceof Error
-            ? `Error: ${err.message}`
-            : "Something went wrong",
+        content: errorContent,
         citations: null,
         created_at: new Date().toISOString(),
+        is_error: true,
+        error_type: errorType,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setStreaming(false);
+      streamingRef.current = false;
       setStreamContent("");
       setStreamCitations([]);
     }
@@ -310,6 +351,21 @@ function MessageBubble({
       <div className="flex justify-end">
         <div className="max-w-[80%] bg-primary text-primary-foreground px-4 py-2.5 rounded-2xl rounded-br-md">
           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (message.is_error) {
+    return (
+      <div className="flex gap-3">
+        <div className="h-7 w-7 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
+          <span className="text-xs font-medium text-amber-500">AI</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3 text-amber-700 dark:text-amber-300">
+            {message.content}
+          </div>
         </div>
       </div>
     );
